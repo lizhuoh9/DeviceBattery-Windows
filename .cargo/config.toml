@@ -1,0 +1,9 @@
+# The released exe must be a single self-contained file: link the C runtime in statically so
+# DeviceBattery.exe never needs the Visual C++ redistributable (VCRUNTIME140.dll).
+# Without this, a machine without the redistributable fails with "VCRUNTIME140.dll was not
+# found" even though the exe is otherwise complete.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
