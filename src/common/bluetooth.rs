@@ -8,12 +8,13 @@
 use super::model::{ChargeState, DeviceKind, DeviceReading, LinkStatus};
 use super::strings::BLUETOOTH_SOURCE;
 
-/// A device node that carries a battery level.
+/// A device node that carries a battery level, and whether the device is connected right now.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BatteryNode {
     pub instance_id: String,
     pub name: String,
     pub level: u8,
+    pub status: LinkStatus,
 }
 
 /// The Bluetooth address in a device instance ID: its last run of exactly 12 hex digits,
@@ -81,8 +82,9 @@ pub fn kind_from_name(name: &str) -> DeviceKind {
     }
 }
 
-/// One reading per Bluetooth address. `names` are friendly names of the devices' main nodes,
-/// keyed by address; nodes without an address are skipped.
+/// One reading per Bluetooth address, carrying the status its node was given. `names` are
+/// friendly names of the devices' main nodes, keyed by address; nodes without an address are
+/// skipped.
 pub fn readings(nodes: &[BatteryNode], names: &[(String, String)], now: u64) -> Vec<DeviceReading> {
     let mut readings: Vec<DeviceReading> = Vec::new();
     for node in nodes {
@@ -106,7 +108,7 @@ pub fn readings(nodes: &[BatteryNode], names: &[(String, String)], now: u64) -> 
             kind,
             Some(node.level),
             ChargeState::Unknown,
-            LinkStatus::Online,
+            node.status,
             BLUETOOTH_SOURCE,
             now,
         ));
@@ -170,13 +172,15 @@ mod tests {
                 instance_id: r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_LOCALMFG&0075\7&1&0&AABBCCDDEE10_C00000000".into(),
                 name: "Galaxy Buds2 Hands-Free AG Audio".into(),
                 level: 60,
+                status: LinkStatus::Online,
             },
             BatteryNode {
                 instance_id: r"BTHENUM\{0000110B-0000-1000-8000-00805F9B34FB}_LOCALMFG&0075\7&1&0&AABBCCDDEE10_C00000000".into(),
                 name: "Galaxy Buds2 Stereo".into(),
                 level: 60,
+                status: LinkStatus::Online,
             },
-            BatteryNode { instance_id: r"BTHLE\DEV_AABBCCDDEE30\7&1&0&AABBCCDDEE30".into(), name: "MX Keys S".into(), level: 85 },
+            BatteryNode { instance_id: r"BTHLE\DEV_AABBCCDDEE30\7&1&0&AABBCCDDEE30".into(), name: "MX Keys S".into(), level: 85, status: LinkStatus::Online },
         ];
         let names = vec![("AABBCCDDEE10".to_owned(), "My Buds".to_owned())];
         let readings = readings(&nodes, &names, 500);
@@ -194,5 +198,27 @@ mod tests {
             ("MX Keys S", DeviceKind::Keyboard)
         );
         assert_eq!(readings[1].source, BLUETOOTH_SOURCE);
+    }
+
+    #[test]
+    fn a_reading_carries_the_status_of_its_node() {
+        let node = |instance_id: &str, status| BatteryNode {
+            instance_id: instance_id.into(),
+            name: "Galaxy Buds2".into(),
+            level: 40,
+            status,
+        };
+        let nodes = vec![
+            node(
+                r"BTHENUM\DEV_AABBCCDDEE10\7&1&0&BLUETOOTHDEVICE_AABBCCDDEE10",
+                LinkStatus::Asleep,
+            ),
+            node(r"BTHLE\DEV_AABBCCDDEE30\7&1&0&AABBCCDDEE30", LinkStatus::Online),
+        ];
+        let readings = readings(&nodes, &[], 500);
+        assert_eq!(readings.len(), 2);
+        assert_eq!(readings[0].status, LinkStatus::Asleep);
+        assert_eq!(readings[0].level, Some(40));
+        assert_eq!(readings[1].status, LinkStatus::Online);
     }
 }
