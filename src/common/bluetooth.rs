@@ -213,7 +213,10 @@ mod tests {
                 r"BTHENUM\DEV_AABBCCDDEE10\7&1&0&BLUETOOTHDEVICE_AABBCCDDEE10",
                 LinkStatus::Asleep,
             ),
-            node(r"BTHLE\DEV_AABBCCDDEE30\7&1&0&AABBCCDDEE30", LinkStatus::Online),
+            node(
+                r"BTHLE\DEV_AABBCCDDEE30\7&1&0&AABBCCDDEE30",
+                LinkStatus::Online,
+            ),
         ];
         let readings = readings(&nodes, &[], 500);
         assert_eq!(readings.len(), 2);

@@ -25,6 +25,13 @@ const BATTERY: DEVPROPKEY = DEVPROPKEY {
     pid: 2,
 };
 /// Whether the device is currently connected.
+///
+/// This key is undocumented: `devpkey.h` publishes other keys of the same device property
+/// namespace but not this one, and the only boolean property type the SDK defines is
+/// `DEVPROP_TYPE_BOOLEAN`, which is what is required here. When no node of a device publishes the
+/// property, the device is treated as online — the behaviour this app had before it looked at the
+/// property at all — and `--list-devices` says so, so a missing property can be diagnosed instead
+/// of silently changing what the widget shows.
 const IS_CONNECTED: DEVPROPKEY = DEVPROPKEY {
     fmtid: GUID::from_u128(0x83da6326_97a6_4088_9453_a1923f573b29),
     pid: 15,
@@ -98,10 +105,9 @@ fn battery_nodes(nodes: &[Node]) -> Vec<BatteryNode> {
 fn connectivity(nodes: &[Node]) -> HashMap<String, bool> {
     let mut states: HashMap<String, bool> = HashMap::new();
     for node in nodes {
-        let (Some(address), Some(state)) = (
-            address_from_instance_id(&node.instance_id),
-            node.connected,
-        ) else {
+        let (Some(address), Some(state)) =
+            (address_from_instance_id(&node.instance_id), node.connected)
+        else {
             continue;
         };
         states
@@ -145,8 +151,7 @@ pub fn nodes() -> Vec<Node> {
                     .unwrap_or_default(),
                 battery: property(set, &info, &BATTERY, DEVPROP_TYPE_BYTE)
                     .and_then(|bytes| bytes.first().copied()),
-                connected: property(set, &info, &IS_CONNECTED, DEVPROP_TYPE_BOOLEAN)
-                    .and_then(|bytes| bytes.first().map(|value| *value != 0)),
+                connected: flag(property(set, &info, &IS_CONNECTED, DEVPROP_TYPE_BOOLEAN)),
             });
         }
         // SAFETY: the set came from SetupDiGetClassDevsW above.
@@ -166,6 +171,12 @@ fn instance_id(set: HDEVINFO, info: &SP_DEVINFO_DATA) -> String {
     } else {
         String::new()
     }
+}
+
+/// Whether a `DEVPROP_BOOLEAN` property is non-zero. `None` when the property is absent, which
+/// callers must treat as "no opinion" rather than as "disconnected".
+fn flag(value: Option<Vec<u8>>) -> Option<bool> {
+    value.and_then(|bytes| bytes.first().map(|first| *first != 0))
 }
 
 /// The raw bytes of a property, when it exists with the expected type.
@@ -213,8 +224,7 @@ mod tests {
     use super::*;
 
     const DEVICE_NODE: &str = r"BTHENUM\DEV_AABBCCDDEE10\7&1&0&BLUETOOTHDEVICE_AABBCCDDEE10";
-    const HANDS_FREE: &str =
-        r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_LOCALMFG&004C\7&1&0&AABBCCDDEE10_C00000000";
+    const HANDS_FREE: &str = r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_LOCALMFG&004C\7&1&0&AABBCCDDEE10_C00000000";
     const LOW_ENERGY: &str = r"BTHLE\DEV_AABBCCDDEE30\7&1&0&AABBCCDDEE30";
 
     fn node(instance_id: &str, battery: Option<u8>, connected: Option<bool>) -> Node {
@@ -279,5 +289,15 @@ mod tests {
             device_names(&nodes),
             vec![("AABBCCDDEE10".to_owned(), "Galaxy Buds2".to_owned())]
         );
+    }
+
+    #[test]
+    fn a_boolean_property_is_read_from_its_first_byte() {
+        assert_eq!(flag(None), None);
+        assert_eq!(flag(Some(Vec::new())), None);
+        assert_eq!(flag(Some(vec![0])), Some(false));
+        assert_eq!(flag(Some(vec![1])), Some(true));
+        // DEVPROP_BOOLEAN True is -1: every bit set.
+        assert_eq!(flag(Some(vec![0xFF])), Some(true));
     }
 }

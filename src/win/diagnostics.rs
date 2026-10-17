@@ -87,6 +87,17 @@ fn build(strings: Strings) -> String {
     for reading in bluetooth::read(now) {
         let _ = writeln!(out, "    {}", describe(&reading));
     }
+    let battery_nodes = nodes.iter().filter(|node| node.battery.is_some()).count();
+    let with_state = nodes
+        .iter()
+        .filter(|node| node.battery.is_some() && node.connected.is_some())
+        .count();
+    if battery_nodes > 0 && with_state == 0 {
+        let _ = writeln!(
+            out,
+            "    (no node reports its connection state: every device is treated as online)"
+        );
+    }
     for node in nodes
         .iter()
         .filter(|node| node.battery.is_some() || node.connected.is_some())
