@@ -1,0 +1,7 @@
+# Rust build output
+/target/
+
+# Smoke-test output: written next to the crate by a local run or the CI smoke test
+/preview-*.png
+/desktop.png
+/devices.txt

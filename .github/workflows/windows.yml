@@ -1,0 +1,78 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ['windows-v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+
+      - name: Lint
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --locked
+
+      - name: Release build
+        run: cargo build --release --locked
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path 'target\release\DeviceBattery.exe'
+          foreach ($language in 'en', 'ko', 'zh-Hans') {
+            $run = Start-Process $exe -ArgumentList '--render-preview', "preview-$language.png", '--language', $language -Wait -PassThru
+            if ($run.ExitCode -ne 0) { throw "preview ($language) failed with $($run.ExitCode)" }
+          }
+          $run = Start-Process $exe -ArgumentList '--list-devices', 'devices.txt' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "device report failed with $($run.ExitCode)" }
+          Get-Content devices.txt -TotalCount 40
+
+          # Run the widget itself for a few seconds and photograph the desktop.
+          $widget = Start-Process $exe -PassThru
+          Start-Sleep -Seconds 8
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $image = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          [System.Drawing.Graphics]::FromImage($image).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $image.Save("$PWD\desktop.png")
+          $crashLog = Join-Path $env:APPDATA 'DeviceBattery\crash.log'
+          if (Test-Path $crashLog) { Get-Content $crashLog }
+          if ($widget.HasExited) { throw "the widget exited early with $($widget.ExitCode)" }
+          Stop-Process -Id $widget.Id
+          Get-Item $exe | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DeviceBattery-windows
+          path: |
+            target/release/DeviceBattery.exe
+            preview-*.png
+            desktop.png
+            devices.txt
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}" "target\release\DeviceBattery.exe"
+          --prerelease
+          --title "Device Battery for Windows ${{ github.ref_name }} (beta)"
+          --notes-file ".github\release-notes\windows.md"
