@@ -1,19 +1,21 @@
-// Embeds the icon and the application manifest (Per-Monitor V2 DPI awareness,
-// common controls v6) into the Windows executable.
+// Embeds the icon, the application manifest (Per-Monitor V2 DPI awareness, common controls v6)
+// and the version information into the Windows executable.
 fn main() {
     println!("cargo:rerun-if-changed=assets/app.rc");
     println!("cargo:rerun-if-changed=assets/app.ico");
     println!("cargo:rerun-if-changed=assets/app.manifest");
 
-    let targets_windows = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "windows");
-    if !targets_windows {
+    if !std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "windows") {
         return;
     }
     let result = embed_resource::compile("assets/app.rc", embed_resource::NONE);
-    // Only a Windows host has the resource compiler; `cargo check` from macOS skips this.
-    if cfg!(windows) {
-        result
-            .manifest_required()
-            .expect("could not compile Windows resources");
-    }
+    // A Windows host must be able to run the resource compiler. A host cross-compiling for
+    // Windows may legitimately lack one (NotAttempted), but a script that actually failed must
+    // never be swallowed: that would ship an exe with no icon, manifest or version information.
+    let outcome = if cfg!(windows) {
+        result.manifest_required()
+    } else {
+        result.manifest_optional()
+    };
+    outcome.unwrap_or_else(|error| panic!("could not compile Windows resources: {error}"));
 }

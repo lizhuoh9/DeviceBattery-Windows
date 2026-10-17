@@ -3,8 +3,9 @@
 1 ICON "app.ico"
 1 RT_MANIFEST "app.manifest"
 
-// Version information shown in the file's Properties → Details tab.
-// Keep FILEVERSION / "FileVersion" in step with the version in Cargo.toml.
+// Version information shown in the file's Properties -> Details tab. rc.exe reads this script in
+// the system code page, so keep it ASCII. A unit test (src/lib.rs) checks that the numbers and
+// strings below match the version in Cargo.toml.
 1 VERSIONINFO
 FILEVERSION 0,1,0,0
 PRODUCTVERSION 0,1,0,0

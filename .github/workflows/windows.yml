@@ -30,6 +30,18 @@ jobs:
       - name: Release build
         run: cargo build --release --locked
 
+      - name: Check the exe is self-contained
+        shell: pwsh
+        run: |
+          # .cargo/config.toml links the CRT statically, so the exe must not import the Visual C++
+          # runtime or the UCRT: those would be missing on a machine without the redistributable.
+          $exe = Resolve-Path 'target\release\DeviceBattery.exe'
+          $imports = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exe))
+          foreach ($name in 'VCRUNTIME140', 'MSVCP140', 'api-ms-win-crt') {
+            if ($imports.Contains($name)) { throw "$exe still imports $name; the C runtime is not static" }
+          }
+          Get-Item $exe | Select-Object Name, Length, @{ n = 'FileVersion'; e = { $_.VersionInfo.FileVersion } }
+
       - name: Smoke test
         shell: pwsh
         run: |
