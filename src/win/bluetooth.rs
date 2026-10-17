@@ -300,4 +300,15 @@ mod tests {
         // DEVPROP_BOOLEAN True is -1: every bit set.
         assert_eq!(flag(Some(vec![0xFF])), Some(true));
     }
+
+    #[test]
+    fn a_sibling_that_reports_disconnected_makes_the_device_asleep() {
+        // Some drivers publish the state only on the device node, not on the node that carries
+        // the level, so the two have to be combined by address.
+        let nodes = vec![
+            node(HANDS_FREE, Some(40), None),
+            node(DEVICE_NODE, None, Some(false)),
+        ];
+        assert_eq!(battery_nodes(&nodes)[0].status, LinkStatus::Asleep);
+    }
 }
