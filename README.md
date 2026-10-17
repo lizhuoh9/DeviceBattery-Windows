@@ -16,7 +16,7 @@ This is the Windows version. The macOS version lives in a separate repository,
   Omni receiver and Compx-chip 4K/8K mouse dongles.
 - **Bluetooth devices too**: anything Windows reports a battery for — earbuds, mice, keyboards.
   A device that is paired but not connected stays in the list as **Asleep**, with the last level
-  Windows kept for it.
+  the widget saw and when it saw it.
 - **Knows the level even when a device sleeps**: shows the last level read and when, e.g.
   "Asleep · 3 hr ago".
 - **Low battery alerts**: one notification at 20% and another at 10%.

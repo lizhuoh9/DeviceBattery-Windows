@@ -39,9 +39,19 @@ impl ReadingStore {
     }
 
     /// Replaces everything `source` reported before with `readings`.
+    ///
+    /// A level is remembered together with the moment it was read, so the age shown always
+    /// belongs to the level shown. An online device refreshes it every time; an offline one
+    /// only the first time it is seen, so a device that is already asleep when the app starts
+    /// keeps counting from that first sighting instead of claiming it was read "just now" on
+    /// every refresh.
     pub fn apply(&mut self, readings: Vec<DeviceReading>, source: &str) {
         for reading in &readings {
-            if reading.status == LinkStatus::Online && reading.level.is_some() {
+            if reading.level.is_none() {
+                continue;
+            }
+            let first_sighting = !self.memory.contains_key(&reading.id);
+            if reading.status == LinkStatus::Online || first_sighting {
                 self.memory.insert(reading.id.clone(), reading.clone());
             }
         }
@@ -105,7 +115,10 @@ fn better<'a>(lhs: &'a DeviceReading, rhs: &'a DeviceReading) -> &'a DeviceReadi
     if rhs.date > lhs.date { rhs } else { lhs }
 }
 
-/// An unreachable device shows what we knew, with the newer status and source.
+/// An unreachable device shows what we knew, with the newer status and source. The level and its
+/// time both come from that remembered reading, so the age shown always belongs to the level
+/// shown: a level Windows cached while the app was not running is not preferred over it, because
+/// the moment it was read is unknown.
 fn merged(reading: &DeviceReading, remembered: Option<&DeviceReading>) -> DeviceReading {
     match remembered {
         Some(remembered) if reading.status != LinkStatus::Online => DeviceReading {
@@ -394,6 +407,65 @@ mod tests {
                 "m4:Same",
                 "k:My keyboard"
             ]
+        );
+    }
+
+    #[test]
+    fn a_device_first_seen_asleep_keeps_the_time_it_was_first_seen() {
+        let mut store = ReadingStore::default();
+        let asleep = |date| {
+            reading(
+                "bt.1",
+                "Buds",
+                DeviceKind::Headphones,
+                Some(40),
+                LinkStatus::Asleep,
+                date,
+            )
+        };
+        // Wake up to a device that is already asleep: its level is real, but we have no idea when
+        // it was read, so the first sighting becomes the timestamp.
+        store.apply(vec![asleep(EARLIER)], "bt");
+        assert_eq!(rows(&store)[0].date, EARLIER);
+        // A later refresh reports it asleep again; the age must keep growing from the first
+        // sighting instead of restarting at "just now" every minute.
+        store.apply(vec![asleep(LATER)], "bt");
+        let row = &rows(&store)[0];
+        assert_eq!(
+            (row.level, row.status, row.date),
+            (Some(40), LinkStatus::Asleep, EARLIER)
+        );
+    }
+
+    #[test]
+    fn an_online_reading_still_replaces_what_was_remembered() {
+        let mut store = ReadingStore::default();
+        store.apply(
+            vec![reading(
+                "bt.1",
+                "Buds",
+                DeviceKind::Headphones,
+                Some(40),
+                LinkStatus::Asleep,
+                EARLIER,
+            )],
+            "bt",
+        );
+        store.apply(
+            vec![reading(
+                "bt.1",
+                "Buds",
+                DeviceKind::Headphones,
+                Some(38),
+                LinkStatus::Online,
+                LATER,
+            )],
+            "bt",
+        );
+        let row = &rows(&store)[0];
+        assert_eq!(
+            (row.level, row.status, row.date),
+            (Some(38), LinkStatus::Online, LATER)
         );
     }
 }
